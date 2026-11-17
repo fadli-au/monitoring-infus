@@ -3,272 +3,1801 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Monitoring Infus IoT</title>
+  <title>Monitoring Infus Real-Time • Nurse Station IoT</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: Inter & JetBrains Mono untuk angka metrik medis yang presisi -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+
+  <!-- Firebase App & Realtime Database Compat SDK (Mudah dihubungkan via URL RTDB tanpa bundler) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+
   <style>
-    :root {
-      --bg: #f1f5f9;
-      --card: #ffffff;
-      --text: #0f172a;
-      --muted: #64748b;
-      --normal: #16a34a;
-      --warning: #d97706;
-      --critical: #dc2626;
+    body {
+      background-color: #f8fafc;
+      color: #0f172a;
+      -webkit-tap-highlight-color: transparent;
     }
-    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-    body { margin: 0; padding: 16px; background: var(--bg); color: var(--text); }
-    .container { max-width: 1100px; margin: 0 auto; }
-    header {
-      display: flex; flex-wrap: wrap; justify-content: space-between;
-      align-items: center; gap: 12px; margin-bottom: 20px;
-      background: var(--card); padding: 16px 20px; border-radius: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+
+    /* Animasi denyut halus untuk kartu berstatus CRITICAL */
+    @keyframes criticalPulse {
+      0%, 100% {
+        box-shadow: 0 4px 20px -2px rgba(225, 29, 72, 0.16), 0 0 0 1px rgba(225, 29, 72, 0.35);
+      }
+      50% {
+        box-shadow: 0 8px 28px -2px rgba(225, 29, 72, 0.32), 0 0 0 2px rgba(225, 29, 72, 0.65);
+      }
     }
-    h1 { margin: 0; font-size: 1.25rem; }
-    .badge {
-      padding: 4px 10px; border-radius: 99px; font-size: 0.8rem; font-weight: 600;
-      background: #e2e8f0; color: #334155;
+
+    .card-critical-pulse {
+      animation: criticalPulse 2.2s infinite ease-in-out;
     }
-    .badge.online { background: #dcfce7; color: #166534; }
-    .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-    button {
-      cursor: pointer; border: none; border-radius: 8px; padding: 10px 16px;
-      font-weight: 600; font-size: 0.9rem; transition: 0.2s;
+
+    /* Animasi tetesan cairan aktif saat DPM > 0 */
+    @keyframes dripDrop {
+      0% {
+        transform: translateY(-4px) scale(0.8);
+        opacity: 0;
+      }
+      40% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(7px) scale(1);
+        opacity: 0;
+      }
     }
-    .btn-primary { background: #2563eb; color: white; }
-    .btn-primary.active { background: #16a34a; }
-    .btn-secondary { background: #e2e8f0; color: #1e293b; }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
+
+    .animate-drip {
+      animation: dripDrop 1.4s infinite ease-in;
     }
-    .card {
-      background: var(--card); border-radius: 12px; padding: 18px;
-      border-left: 6px solid var(--normal);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+
+    /* Custom scrollbar lembut untuk log riwayat */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
     }
-    .card.WARNING { border-left-color: var(--warning); background: #fffbeb; }
-    .card.CRITICAL {
-      border-left-color: var(--critical); background: #fef2f2;
-      animation: pulse 1.5s infinite;
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 9999px;
     }
-    @keyframes pulse {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.3); }
-      50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
     }
-    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .bed-title { font-weight: 700; font-size: 1.1rem; }
-    .device-id { font-size: 0.75rem; color: var(--muted); }
-    .status-pill {
-      padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; color: white;
-      background: var(--normal);
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
     }
-    .WARNING .status-pill { background: var(--warning); }
-    .CRITICAL .status-pill { background: var(--critical); }
-    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
-    .metric-box { background: rgba(255,255,255,0.7); padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0; }
-    .metric-label { font-size: 0.75rem; color: var(--muted); }
-    .metric-val { font-size: 1.4rem; font-weight: 700; margin-top: 2px; }
-    .alert-msg { font-size: 0.85rem; color: #991b1b; font-weight: 600; margin-top: 8px; min-height: 20px; }
-    .sim-panel {
-      margin-top: 28px; background: var(--card); padding: 18px; border-radius: 12px;
-      border: 1px dashed #94a3b8; display: none;
-    }
-    .sim-panel.open { display: block; }
-    .sim-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-    .btn-sim-ok { background: #dcfce7; color: #166534; }
-    .btn-sim-warn { background: #fef3c7; color: #92400e; }
-    .btn-sim-crit { background: #fee2e2; color: #991b1b; }
-    .empty-state { text-align: center; padding: 40px; color: var(--muted); grid-column: 1 / -1; }
   </style>
 </head>
-<body>
-  <div class="container">
-    <header>
-      <div>
-        <h1>Monitoring Infus Real-Time</h1>
-        <small style="color: var(--muted)">Firebase RTDB + Web Speech API</small>
+<body class="min-h-screen flex flex-col antialiased selection:bg-sky-100 selection:text-sky-900">
+
+  <!-- Toast Notification Container (Pengganti alert() bawaan browser) -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- Main Wrapper -->
+  <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-7 flex-1 space-y-6">
+
+    <!-- 1. HEADER & STATUS SISTEM -->
+    <header class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 sm:p-6">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <!-- Brand & Title -->
+        <div class="flex items-start sm:items-center gap-3.5">
+          <div class="w-12 h-12 rounded-2xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+            <!-- Medical IV Bag SVG Icon -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 3h6" />
+              <path d="M12 3v3" />
+              <rect x="7" y="6" width="10" height="11" rx="2" />
+              <path d="M7 11h10" />
+              <path d="M12 17v4" />
+              <path d="M10 21h4" />
+            </svg>
+          </div>
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900">
+                Monitoring Infus Real-Time
+              </h1>
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+                Nurse Station
+              </span>
+            </div>
+            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Nurse Station IoT &bull; Firebase RTDB + Web Speech API
+            </p>
+          </div>
+        </div>
+
+        <!-- Connection Status & Clock -->
+        <div class="flex flex-wrap items-center gap-2.5 sm:justify-end">
+          <div class="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono font-semibold text-slate-600 flex items-center gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span id="liveClock">--:--:-- WIB</span>
+          </div>
+
+          <button
+            id="btnConnectionStatus"
+            onclick="openModal('modalFirebase')"
+            title="Klik untuk mengatur koneksi Firebase RTDB"
+            class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+          >
+            <span id="connectionDot" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+            <span id="connectionLabel">Mode Simulasi Lokal</span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+        </div>
       </div>
-      <span id="connStatus" class="badge">Menghubungkan...</span>
+
+      <!-- Divider -->
+      <div class="border-t border-slate-100 my-4"></div>
+
+      <!-- Control Toolbar -->
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <!-- Tombol Aktifkan Suara -->
+          <button
+            id="btnToggleVoice"
+            onclick="toggleVoiceAlert()"
+            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition shadow-sm cursor-pointer bg-slate-800 text-white hover:bg-slate-700 active:scale-[0.99]"
+          >
+            <span id="voiceIconWrap">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+              </svg>
+            </span>
+            <span id="voiceBtnText">Aktifkan Suara</span>
+            <span id="voiceQueueBadge" class="hidden ml-1 px-1.5 py-0.5 text-[11px] font-bold rounded-full bg-white/20 text-white">0</span>
+          </button>
+
+          <!-- Tombol Layar Tetap Menyala (Wake Lock) -->
+          <button
+            id="btnToggleWakeLock"
+            onclick="toggleWakeLock()"
+            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition border cursor-pointer bg-white text-slate-700 border-slate-200 hover:bg-slate-50 active:scale-[0.99]"
+          >
+            <svg id="wakeLockIcon" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <span id="wakeLockBtnText">Layar Tetap Menyala</span>
+          </button>
+
+          <!-- Tombol Toggle Simulator -->
+          <button
+            id="btnToggleSimulator"
+            onclick="toggleSimulatorPanel()"
+            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition border cursor-pointer bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 active:scale-[0.99]"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 3h6"/><path d="M10 3v5l-4.5 7.5A2 2 0 0 0 7.2 18.5h9.6a2 2 0 0 0 1.7-3L14 8V3"/>
+            </svg>
+            <span id="simulatorBtnText">Sembunyikan Simulator</span>
+          </button>
+        </div>
+
+        <!-- Secondary Docs / Config Buttons -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            onclick="openModal('modalFirebase')"
+            class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200/70 transition cursor-pointer"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+            </svg>
+            <span>Koneksi Firebase</span>
+          </button>
+
+          <button
+            onclick="openModal('modalArchitecture')"
+            class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200/70 transition cursor-pointer"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-sky-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            <span>Panduan Arsitektur &amp; ESP32</span>
+          </button>
+        </div>
+      </div>
     </header>
 
-    <div class="controls">
-      <button id="btnAudio" class="btn-primary">🔊 Aktifkan Suara & Layar Tetap Menyala</button>
-      <button id="btnToggleSim" class="btn-secondary">🧪 Buka Panel Simulator Uji Coba</button>
-    </div>
+    <!-- 2. RINGKASAN BANGSAL (KPI CARDS) -->
+    <section aria-label="Ringkasan Status Bangsal" class="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+      <!-- Total Bed -->
+      <div class="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-sm flex items-center justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Bed Terpantau</p>
+          <p id="kpiTotal" class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1 font-mono">3</p>
+          <p class="text-xs text-slate-500 mt-1">Bangsal Rawat Inap</p>
+        </div>
+        <div class="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>
+          </svg>
+        </div>
+      </div>
 
-    <div id="deviceGrid" class="grid">
-      <div class="empty-state">Menunggu data dari perangkat infus...</div>
-    </div>
+      <!-- Status Normal -->
+      <div class="bg-white rounded-2xl border border-emerald-200/80 p-4 sm:p-5 shadow-sm flex items-center justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-emerald-600">Status Normal</p>
+          <p id="kpiNormal" class="text-2xl sm:text-3xl font-extrabold text-emerald-700 mt-1 font-mono">0</p>
+          <p class="text-xs text-slate-500 mt-1">Aliran &amp; Volume Aman</p>
+        </div>
+        <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+      </div>
 
-    <!-- Panel Simulator Bawaan -->
-    <div id="simPanel" class="sim-panel">
-      <strong>Simulator Pengiriman Data (Tanpa Alat Fisik)</strong>
-      <p style="font-size: 0.85rem; color: var(--muted); margin: 4px 0 12px;">
-        Klik tombol di bawah untuk mensimulasikan data masuk ke Firebase dan menguji antrean suara multi-alat:
-      </p>
-      <div class="sim-grid">
-        <button class="btn-sim-ok" onclick="kirimSimulasi('node_01', 'Kamar 1 - Bed A', 450, 20, 'NORMAL', '')">
-          Node 01: Normal (450 mL)
+      <!-- Status Warning -->
+      <div class="bg-white rounded-2xl border border-amber-200/80 p-4 sm:p-5 shadow-sm flex items-center justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-amber-600">Status Warning</p>
+          <p id="kpiWarning" class="text-2xl sm:text-3xl font-extrabold text-amber-600 mt-1 font-mono">0</p>
+          <p class="text-xs text-slate-500 mt-1">Cairan Menipis (&le;50 mL)</p>
+        </div>
+        <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Status Critical -->
+      <div class="bg-white rounded-2xl border border-rose-200/80 p-4 sm:p-5 shadow-sm flex items-center justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-rose-600">Status Critical</p>
+          <p id="kpiCritical" class="text-2xl sm:text-3xl font-extrabold text-rose-600 mt-1 font-mono">0</p>
+          <p class="text-xs text-slate-500 mt-1">Darurat / Mampet / Offline</p>
+        </div>
+        <div class="w-11 h-11 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. GRID KARTU MONITORING BED (MULTI-NODE) -->
+    <section aria-label="Monitoring Tiap Tempat Tidur">
+      <div class="flex items-center justify-between mb-3.5">
+        <h2 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
+          <span>Daftar Monitor Infus Pasien</span>
+          <span class="text-xs font-medium text-slate-400">(Faktor Tetes Standar: 20 gtt/mL)</span>
+        </h2>
+        <button
+          onclick="resetAllNodesToNormal()"
+          class="text-xs font-semibold text-sky-600 hover:text-sky-700 hover:underline cursor-pointer"
+        >
+          Reset Semua Bed ke Normal
         </button>
-        <button class="btn-sim-warn" onclick="kirimSimulasi('node_01', 'Kamar 1 - Bed A', 45, 18, 'WARNING', 'Perhatian, cairan infus Kamar 1 Bed A hampir habis, tersisa 45 mililiter')">
-          Node 01: Warning (45 mL)
+      </div>
+
+      <div id="bedsGrid" class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <!-- Kartu Bed dirender secara dinamis oleh JavaScript -->
+      </div>
+    </section>
+
+    <!-- 4. PANEL SIMULATOR PENGIRIMAN DATA (TANPA ALAT FISIK) -->
+    <section id="simulatorPanel" class="bg-white rounded-2xl border-2 border-dashed border-slate-300 p-5 sm:p-6 shadow-sm transition-all">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-100">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              VIRTUAL DEVICE
+            </span>
+            <h2 class="text-base sm:text-lg font-bold text-slate-900">
+              Simulator Pengiriman Data (Tanpa Alat Fisik)
+            </h2>
+          </div>
+          <p class="text-xs sm:text-sm text-slate-500 mt-1">
+            Klik skenario di bawah untuk mensimulasikan data sensor masuk, menguji antrean suara multi-alat, atau menjalankan tetesan otomatis.
+          </p>
+        </div>
+
+        <!-- Kontrol Simulasi Tetesan Berjalan Otomatis -->
+        <div class="flex flex-wrap items-center gap-2.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
+          <button
+            id="btnAutoDrip"
+            onclick="toggleAutoDrip()"
+            class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm"
+          >
+            <svg id="autoDripIcon" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <span id="autoDripLabel">Jalankan Tetesan Otomatis</span>
+          </button>
+
+          <select
+            id="simSpeedSelect"
+            onchange="changeSimSpeed(this.value)"
+            aria-label="Kecepatan Simulasi Tetesan"
+            class="px-2.5 py-2 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+          >
+            <option value="1">Kecepatan 1x (Real-Time)</option>
+            <option value="30" selected>Kecepatan 30x (Uji Cepat)</option>
+            <option value="120">Kecepatan 120x (Super Cepat)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Tombol Skenario Cepat -->
+      <div class="mt-4">
+        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">
+          Skenario Uji Cepat Multi-Node:
+        </p>
+        <div class="flex flex-wrap gap-2.5">
+          <!-- Node 01 Scenarios -->
+          <button
+            onclick="simulateScenario('node_01', { sisaCairan: 450, dpm: 20, forceOnline: true })"
+            class="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
+          >
+            Node 01: Normal (450 mL, 20 DPM)
+          </button>
+
+          <button
+            onclick="simulateScenario('node_01', { sisaCairan: 45, dpm: 20, forceOnline: true })"
+            class="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
+          >
+            Node 01: Warning Menipis (45 mL)
+          </button>
+
+          <button
+            onclick="simulateScenario('node_01', { sisaCairan: 10, dpm: 0, forceOnline: true })"
+            class="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100 transition cursor-pointer"
+          >
+            Node 01: Critical Mampet/Habis (10 mL, 0 DPM)
+          </button>
+
+          <button
+            onclick="simulateScenario('node_01', { sisaCairan: 380, dpm: 48, forceOnline: true })"
+            class="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100 transition cursor-pointer"
+          >
+            Node 01: Critical Over-Drip (48 DPM)
+          </button>
+
+          <!-- Node 02 Scenarios -->
+          <button
+            onclick="simulateScenario('node_02', { sisaCairan: 40, dpm: 18, forceOnline: true })"
+            class="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
+          >
+            Node 02: Warning (Uji Antrean Suara)
+          </button>
+
+          <button
+            onclick="simulateScenario('node_02', { sisaCairan: 500, dpm: 20, forceOnline: true })"
+            class="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
+          >
+            Node 02: Normal (500 mL, 20 DPM)
+          </button>
+
+          <!-- Node 03 Scenarios -->
+          <button
+            onclick="simulateOfflineNode('node_03')"
+            class="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 transition cursor-pointer"
+          >
+            Node 03: Simulasi Alat Offline
+          </button>
+
+          <button
+            onclick="simulateScenario('node_03', { sisaCairan: 320, dpm: 22, forceOnline: true })"
+            class="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
+          >
+            Node 03: Pulihkan Online (320 mL)
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. LOG RIWAYAT KEJADIAN & ALARM -->
+    <section aria-label="Log Riwayat Kejadian dan Alarm" class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 sm:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <div class="flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <h2 class="text-base sm:text-lg font-bold text-slate-900">Log Riwayat Kejadian &amp; Alarm</h2>
+          <span id="logCountBadge" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">0</span>
+        </div>
+
+        <button
+          onclick="clearEventLogs()"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 transition cursor-pointer"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+          <span>Hapus Log</span>
         </button>
-        <button class="btn-sim-crit" onclick="kirimSimulasi('node_01', 'Kamar 1 - Bed A', 10, 0, 'CRITICAL', 'Darurat! Tetesan infus Kamar 1 Bed A berhenti dan cairan kritis')">
-          Node 01: Critical (Mampet/Habis)
+      </div>
+
+      <div id="eventLogList" class="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+        <!-- Daftar log dirender secara dinamis -->
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 text-center text-xs text-slate-400">
+    Sistem Monitoring Infus IoT &bull; Nurse Station Real-Time Dashboard &bull; Siap Integrasi ESP32 + Firebase RTDB
+  </footer>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 1: KONFIGURASI KONEKSI FIREBASE RTDB                            -->
+  <!-- ===================================================================== -->
+  <div id="modalFirebase" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-xl border border-slate-200 overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="text-lg font-bold text-slate-900">Pengaturan Koneksi Firebase RTDB</h3>
+        <button onclick="closeModal('modalFirebase')" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
         </button>
-        <button class="btn-sim-warn" onclick="kirimSimulasi('node_02', 'Kamar 2 - Bed B', 30, 15, 'WARNING', 'Peringatan, cairan infus Kamar 2 Bed B segera habis')">
-          Node 02: Warning (Uji Antrean Suara)
+      </div>
+
+      <div class="p-6 space-y-4 text-sm">
+        <p class="text-slate-600 leading-relaxed">
+          Hubungkan dashboard ini ke <strong>Firebase Realtime Database</strong> milikmu agar data dari alat ESP32 maupun tombol simulator langsung tersinkronisasi secara <em>real-time</em>.
+        </p>
+
+        <div>
+          <label for="inputDatabaseUrl" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+            Firebase Database URL
+          </label>
+          <input
+            id="inputDatabaseUrl"
+            type="url"
+            placeholder="https://nama-project-default-rtdb.asia-southeast1.firebasedatabase.app"
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-800 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
+          />
+          <p class="text-xs text-slate-400 mt-1">
+            Salin URL dari menu <strong>Build &rarr; Realtime Database</strong> di Firebase Console.
+          </p>
+        </div>
+
+        <div>
+          <label for="inputDbPath" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+            Path Node Utama di Database
+          </label>
+          <input
+            id="inputDbPath"
+            type="text"
+            value="infus_nodes"
+            placeholder="infus_nodes"
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-800 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
+          />
+          <p class="text-xs text-slate-400 mt-1">
+            Contoh struktur: <code class="bg-slate-100 px-1 py-0.5 rounded">/infus_nodes/node_01</code>
+          </p>
+        </div>
+
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+          <strong>Catatan Keamanan Pengujian:</strong> Pastikan <em>Security Rules</em> di Firebase RTDB mengizinkan baca/tulis (<code class="font-mono">".read": true, ".write": true</code>) selama tahap uji coba purwarupa.
+        </div>
+      </div>
+
+      <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+        <button
+          onclick="disconnectFirebase()"
+          class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200/70 transition cursor-pointer"
+        >
+          Gunakan Mode Lokal Saja
         </button>
-        <button class="btn-sim-ok" onclick="kirimSimulasi('node_02', 'Kamar 2 - Bed B', 500, 22, 'NORMAL', '')">
-          Node 02: Normal (500 mL)
+        <div class="flex items-center gap-2">
+          <button
+            onclick="closeModal('modalFirebase')"
+            class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 cursor-pointer"
+          >
+            Batal
+          </button>
+          <button
+            onclick="saveFirebaseSettings()"
+            class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700 shadow-sm cursor-pointer"
+          >
+            Simpan &amp; Hubungkan
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 2: PANDUAN ARSITEKTUR SISTEM & FORMAT PAYLOAD ESP32             -->
+  <!-- ===================================================================== -->
+  <div id="modalArchitecture" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+    <div class="bg-white rounded-2xl max-w-2xl w-full shadow-xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <h3 class="text-lg font-bold text-slate-900">Panduan Arsitektur Sistem &amp; Integrasi ESP32</h3>
+        <button onclick="closeModal('modalArchitecture')" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-5 overflow-y-auto custom-scrollbar text-sm text-slate-600">
+        <!-- Diagram Alur Data -->
+        <div>
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5">1. Alur Kerja Sistem IoT (End-to-End)</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+              <div class="text-xs font-bold text-sky-700 mb-1">1. Perangkat Keras (ESP32)</div>
+              <p class="text-xs text-slate-600 leading-relaxed">
+                <strong>Load Cell (HX711)</strong> menimbang sisa cairan (mL) dan <strong>Sensor IR</strong> menghitung tetesan per menit (DPM).
+              </p>
+            </div>
+            <div class="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200">
+              <div class="text-xs font-bold text-amber-800 mb-1">2. Cloud Broker (Firebase)</div>
+              <p class="text-xs text-slate-600 leading-relaxed">
+                ESP32 mengirim data JSON via WiFi ke <strong>Firebase RTDB</strong> setiap 2–5 detik sebagai jembatan awan.
+              </p>
+            </div>
+            <div class="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
+              <div class="text-xs font-bold text-emerald-800 mb-1">3. Nurse Station Web</div>
+              <p class="text-xs text-slate-600 leading-relaxed">
+                Dashboard mendeteksi anomali, menghitung ETA habis, dan membacakan peringatan via <strong>Web Speech API</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Struktur JSON Payload untuk ESP32 -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">2. Format JSON yang Dikirim ESP32 ke Firebase</h4>
+            <button
+              onclick="copyEspJsonSample()"
+              class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-50 text-sky-700 hover:bg-sky-100 cursor-pointer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              <span>Salin Contoh JSON</span>
+            </button>
+          </div>
+          <pre id="espJsonSample" class="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed">{
+  "infus_nodes": {
+    "node_01": {
+      "nama": "Kamar 1 - Bed A",
+      "sisaCairan": 450,
+      "kapasitasAwal": 500,
+      "dpm": 20,
+      "targetDpm": 20,
+      "faktorTetes": 20,
+      "updatedAt": 1731859200000
+    }
+  }
+}</pre>
+        </div>
+
+        <!-- Aturan Ambang Batas Klinis -->
+        <div>
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">3. Logika Penentuan Status Otomatis</h4>
+          <div class="border border-slate-200 rounded-xl overflow-hidden text-xs">
+            <table class="w-full text-left border-collapse">
+              <thead class="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Status</th>
+                  <th class="py-2 px-3">Kondisi Pemicu</th>
+                  <th class="py-2 px-3">Respon Sistem</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <tr>
+                  <td class="py-2 px-3 font-bold text-emerald-700">NORMAL</td>
+                  <td class="py-2 px-3">Cairan &gt; 50 mL &amp; 5 &le; DPM &le; 35</td>
+                  <td class="py-2 px-3">Pantauan rutin, alarm diam.</td>
+                </tr>
+                <tr>
+                  <td class="py-2 px-3 font-bold text-amber-700">WARNING</td>
+                  <td class="py-2 px-3">Cairan 16–50 mL atau DPM lambat (&lt; 5)</td>
+                  <td class="py-2 px-3">Notifikasi kuning + pengingat suara.</td>
+                </tr>
+                <tr>
+                  <td class="py-2 px-3 font-bold text-rose-700">CRITICAL</td>
+                  <td class="py-2 px-3">Cairan &le; 15 mL, Mampet (0 DPM), atau Over-Drip (&gt; 35 DPM)</td>
+                  <td class="py-2 px-3">Kartu merah berdenyut + alarm suara prioritas.</td>
+                </tr>
+                <tr>
+                  <td class="py-2 px-3 font-bold text-slate-600">OFFLINE</td>
+                  <td class="py-2 px-3">Tidak ada pembaruan data &gt; 35 detik</td>
+                  <td class="py-2 px-3">Peringatan koneksi alat terputus.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex justify-end shrink-0">
+        <button
+          onclick="closeModal('modalArchitecture')"
+          class="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 cursor-pointer"
+        >
+          Mengerti
         </button>
       </div>
     </div>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  <!-- ===================================================================== -->
+  <!-- JAVASCRIPT APPLICATION LOGIC                                          -->
+  <!-- ===================================================================== -->
+  <script>
+    /**
+     * =========================================================================
+     * 1. STATE UTAMA APLIKASI & DATA DEFAULT MULTI-NODE
+     * =========================================================================
+     */
+    const STORAGE_KEY_NODES = 'nurse_station_infus_nodes_v2';
+    const STORAGE_KEY_FB = 'nurse_station_firebase_cfg_v2';
+    const OFFLINE_TIMEOUT_MS = 35000; // 35 detik tanpa update = OFFLINE
 
-    // Konfigurasi Firebase Anda
-    const firebaseConfig = {
-      databaseURL: "https://hobbixproject-default-rtdb.asia-southeast1.firebasedatabase.app"
+    const DEFAULT_NODES = {
+      node_01: {
+        id: 'node_01',
+        nama: 'Kamar 1 - Bed A',
+        sisaCairan: 10,
+        kapasitasAwal: 500,
+        dpm: 0,
+        targetDpm: 20,
+        faktorTetes: 20, // 20 tetes/mL (makrodrip standar)
+        updatedAt: Date.now(),
+        acknowledgedSignature: null,
+      },
+      node_02: {
+        id: 'node_02',
+        nama: 'Kamar 1 - Bed B',
+        sisaCairan: 440,
+        kapasitasAwal: 500,
+        dpm: 20,
+        targetDpm: 20,
+        faktorTetes: 20,
+        updatedAt: Date.now(),
+        acknowledgedSignature: null,
+      },
+      node_03: {
+        id: 'node_03',
+        nama: 'Kamar 2 - Bed A',
+        sisaCairan: 310,
+        kapasitasAwal: 500,
+        dpm: 18,
+        targetDpm: 20,
+        faktorTetes: 20,
+        updatedAt: Date.now(),
+        acknowledgedSignature: null,
+      },
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+    let nodesState = loadInitialNodes();
+    let previousStatusMap = {};
+    let eventLogs = [];
 
-    // State Audio & Antrean Suara (TTS Queue)
-    let audioEnabled = false;
-    const speechQueue = [];
-    let isSpeaking = false;
-    const lastAlertSignature = {}; // Mencegah suara berulang terus-menerus untuk kondisi yang sama
+    // State Fitur Pendukung
+    let isVoiceEnabled = false;
+    let wakeLockSentinel = null;
+    let isSimulatorOpen = true;
+    let autoDripInterval = null;
+    let simSpeedMultiplier = 30;
 
-    function enqueueSpeech(text) {
-      if (!audioEnabled || !text) return;
-      speechQueue.push(text);
-      processQueue();
-    }
+    // Firebase State
+    let firebaseConnected = false;
+    let firebaseDbRef = null;
 
-    function processQueue() {
-      if (isSpeaking || speechQueue.length === 0) return;
-      isSpeaking = true;
-      const text = speechQueue.shift();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "id-ID";
-      utterance.rate = 1.0;
-      utterance.onend = () => {
-        isSpeaking = false;
-        processQueue();
-      };
-      utterance.onerror = () => {
-        isSpeaking = false;
-        processQueue();
-      };
-      window.speechSynthesis.speak(utterance);
-    }
-
-    // Tombol Aktivasi Audio & Screen Wake Lock (agar HP tidak mati layar)
-    const btnAudio = document.getElementById("btnAudio");
-    btnAudio.addEventListener("click", async () => {
-      audioEnabled = true;
-      btnAudio.textContent = "✅ Suara Aktif";
-      btnAudio.classList.add("active");
-      enqueueSpeech("Sistem notifikasi suara monitoring infus aktif.");
-
-      if ("wakeLock" in navigator) {
-        try { await navigator.wakeLock.request("screen"); } catch (e) {}
+    /**
+     * Memuat state awal dari localStorage atau fallback ke DEFAULT_NODES
+     */
+    function loadInitialNodes() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY_NODES);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // Perbarui timestamp agar saat pertama kali dibuka tidak langsung dianggap offline
+          const now = Date.now();
+          Object.keys(parsed).forEach((key) => {
+            if (!parsed[key].forcedOffline) {
+              parsed[key].updatedAt = now;
+            }
+          });
+          return parsed;
+        }
+      } catch (e) {
+        console.warn('Gagal memuat state lokal:', e);
       }
-    });
+      return JSON.parse(JSON.stringify(DEFAULT_NODES));
+    }
 
-    // Toggle Panel Simulator
-    document.getElementById("btnToggleSim").addEventListener("click", () => {
-      document.getElementById("simPanel").classList.toggle("open");
-    });
+    function persistNodesLocally() {
+      try {
+        localStorage.setItem(STORAGE_KEY_NODES, JSON.stringify(nodesState));
+      } catch (e) {
+        console.warn('Gagal menyimpan state lokal:', e);
+      }
+    }
 
-    // Fungsi Simulator Global
-    window.kirimSimulasi = (deviceId, bed, vol_ml, dpm, status, pesan_suara) => {
-      set(ref(db, `infus/${deviceId}`), {
-        bed,
-        vol_ml,
-        dpm,
-        status,
-        pesan_suara,
-        updated_at: new Date().toLocaleTimeString("id-ID")
-      });
+    /**
+     * =========================================================================
+     * 2. ANALISIS STATUS KLINIS & KALKULASI ETA INFUS
+     * =========================================================================
+     */
+    function evaluateNodeStatus(node) {
+      const now = Date.now();
+      const isOffline = Boolean(node.forcedOffline) || (now - (node.updatedAt || now) > OFFLINE_TIMEOUT_MS);
+
+      const sisa = Math.max(0, Number(node.sisaCairan) || 0);
+      const kapasitas = Math.max(1, Number(node.kapasitasAwal) || 500);
+      const dpm = Math.max(0, Number(node.dpm) || 0);
+      const targetDpm = Number(node.targetDpm) || 20;
+      const faktorTetes = Number(node.faktorTetes) || 20;
+
+      // Hitung persentase sisa cairan
+      const pct = Math.min(100, Math.max(0, Math.round((sisa / kapasitas) * 100)));
+
+      // Hitung Estimasi Waktu Habis (ETA)
+      let etaText = 'Berhenti (0 DPM)';
+      let etaMinutes = Infinity;
+      if (sisa <= 0) {
+        etaText = 'Cairan Habis';
+        etaMinutes = 0;
+      } else if (dpm > 0) {
+        const mlPerMinute = dpm / faktorTetes;
+        etaMinutes = Math.round(sisa / mlPerMinute);
+        if (etaMinutes < 1) {
+          etaText = '< 1 menit';
+        } else if (etaMinutes < 60) {
+          etaText = `${etaMinutes} menit`;
+        } else {
+          const jam = Math.floor(etaMinutes / 60);
+          const mnt = etaMinutes % 60;
+          etaText = mnt > 0 ? `${jam} jam ${mnt} mnt` : `${jam} jam`;
+        }
+      }
+
+      // Evaluasi Tingkat Keparahan (OFFLINE / CRITICAL / WARNING / NORMAL)
+      if (isOffline) {
+        return {
+          level: 'OFFLINE',
+          badgeText: 'OFFLINE',
+          alertMessage: `Koneksi perangkat ${node.nama} terputus! Periksa daya atau sinyal WiFi alat.`,
+          voiceMessage: `Perhatian. Koneksi alat infus ${node.nama} terputus.`,
+          signature: 'OFFLINE',
+          pct,
+          etaText: 'Tidak diketahui',
+        };
+      }
+
+      // Kondisi CRITICAL
+      const isFluidCritical = sisa <= 15;
+      const isStopped = dpm === 0;
+      const isOverDrip = dpm > 35;
+
+      if (isFluidCritical || isStopped || isOverDrip) {
+        let reasonParts = [];
+        if (isStopped && isFluidCritical) {
+          reasonParts.push('tetesan infus berhenti dan cairan kritis');
+        } else {
+          if (isStopped) reasonParts.push('tetesan infus berhenti (mampet)');
+          if (isFluidCritical) reasonParts.push(`sisa cairan kritis (${Math.round(sisa)} mililiter)`);
+          if (isOverDrip) reasonParts.push(`laju tetesan terlalu cepat (${dpm} DPM)`);
+        }
+        const reasonJoined = reasonParts.join(' serta ');
+        return {
+          level: 'CRITICAL',
+          badgeText: 'CRITICAL',
+          alertMessage: `Darurat! ${capitalizeFirst(reasonJoined)} pada ${node.nama}.`,
+          voiceMessage: `Darurat! ${capitalizeFirst(reasonJoined)} di ${node.nama}. Mohon segera ditangani.`,
+          signature: `CRITICAL:${isFluidCritical}:${isStopped}:${isOverDrip}`,
+          pct,
+          etaText,
+        };
+      }
+
+      // Kondisi WARNING
+      const isFluidLow = sisa <= 50;
+      const isSlowDrip = dpm > 0 && dpm < 6;
+
+      if (isFluidLow || isSlowDrip) {
+        let warnText = isFluidLow
+          ? `Sisa cairan ${node.nama} menipis (${Math.round(sisa)} mL), segera siapkan cairan pengganti.`
+          : `Laju tetesan ${node.nama} terlalu lambat (${dpm} DPM dari target ${targetDpm} DPM).`;
+        let voiceText = isFluidLow
+          ? `Peringatan. Sisa cairan infus ${node.nama} menipis, tersisa ${Math.round(sisa)} mililiter.`
+          : `Peringatan. Laju tetesan infus ${node.nama} terlalu lambat, ${dpm} tetes per menit.`;
+
+        return {
+          level: 'WARNING',
+          badgeText: 'WARNING',
+          alertMessage: warnText,
+          voiceMessage: voiceText,
+          signature: `WARNING:${isFluidLow}:${isSlowDrip}`,
+          pct,
+          etaText,
+        };
+      }
+
+      // Kondisi NORMAL
+      return {
+        level: 'NORMAL',
+        badgeText: 'NORMAL',
+        alertMessage: null,
+        voiceMessage: null,
+        signature: 'NORMAL',
+        pct,
+        etaText,
+      };
+    }
+
+    function capitalizeFirst(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    /**
+     * =========================================================================
+     * 3. WEB SPEECH API (ANTREAN SUARA MULTI-ALAT + AUDIO CHIME)
+     * =========================================================================
+     */
+    const VoiceAlertSystem = {
+      queue: [],
+      isSpeaking: false,
+      audioCtx: null,
+
+      playAttentionChime(isCritical = false) {
+        try {
+          if (!this.audioCtx) {
+            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          if (this.audioCtx.state === 'suspended') {
+            this.audioCtx.resume();
+          }
+          const now = this.audioCtx.currentTime;
+          const osc = this.audioCtx.createOscillator();
+          const gain = this.audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(isCritical ? 880 : 660, now);
+          if (isCritical) {
+            osc.frequency.setValueAtTime(1046.5, now + 0.14);
+          }
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.exponentialRampToValueAtTime(0.14, now + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+
+          osc.connect(gain);
+          gain.connect(this.audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + 0.34);
+        } catch (e) {
+          // Abaikan jika audio context dibatasi browser
+        }
+      },
+
+      enqueue(nodeId, text, isCritical = false) {
+        if (!isVoiceEnabled || !('speechSynthesis' in window) || !text) return;
+
+        // Cegah duplikasi pesan yang sama persis di dalam antrean
+        const alreadyQueued = this.queue.some((item) => item.nodeId === nodeId && item.text === text);
+        if (alreadyQueued) return;
+
+        this.queue.push({ nodeId, text, isCritical });
+        this.updateQueueBadge();
+        this.processNext();
+      },
+
+      processNext() {
+        if (!isVoiceEnabled || this.isSpeaking || this.queue.length === 0) {
+          this.updateQueueBadge();
+          return;
+        }
+
+        const nextItem = this.queue.shift();
+        this.updateQueueBadge();
+        this.isSpeaking = true;
+
+        this.playAttentionChime(nextItem.isCritical);
+
+        setTimeout(() => {
+          if (!isVoiceEnabled) {
+            this.isSpeaking = false;
+            return;
+          }
+          try {
+            const utterance = new SpeechSynthesisUtterance(nextItem.text);
+            utterance.lang = 'id-ID';
+            utterance.rate = 0.98;
+            utterance.pitch = 1.0;
+
+            const voices = window.speechSynthesis.getVoices();
+            const idVoice = voices.find((v) => v.lang && v.lang.toLowerCase().includes('id'));
+            if (idVoice) {
+              utterance.voice = idVoice;
+            }
+
+            utterance.onend = () => {
+              this.isSpeaking = false;
+              setTimeout(() => this.processNext(), 350);
+            };
+            utterance.onerror = () => {
+              this.isSpeaking = false;
+              setTimeout(() => this.processNext(), 350);
+            };
+
+            window.speechSynthesis.speak(utterance);
+          } catch (err) {
+            this.isSpeaking = false;
+          }
+        }, 320);
+      },
+
+      clear() {
+        this.queue = [];
+        this.isSpeaking = false;
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+        this.updateQueueBadge();
+      },
+
+      updateQueueBadge() {
+        const badge = document.getElementById('voiceQueueBadge');
+        if (!badge) return;
+        if (isVoiceEnabled && this.queue.length > 0) {
+          badge.textContent = `Antrean: ${this.queue.length}`;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      },
     };
 
-    // Pantau Koneksi Firebase
-    const connectedRef = ref(db, ".info/connected");
-    onValue(connectedRef, (snap) => {
-      const el = document.getElementById("connStatus");
-      if (snap.val() === true) {
-        el.textContent = "● Terhubung ke Server";
-        el.classList.add("online");
-      } else {
-        el.textContent = "○ Terputus";
-        el.classList.remove("online");
-      }
-    });
+    // Muat daftar suara browser saat tersedia
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
 
-    // Pantau Semua Perangkat Infus secara Real-Time
-    const infusRef = ref(db, "infus");
-    const grid = document.getElementById("deviceGrid");
+    function toggleVoiceAlert() {
+      const btn = document.getElementById('btnToggleVoice');
+      const label = document.getElementById('voiceBtnText');
+      const iconWrap = document.getElementById('voiceIconWrap');
 
-    onValue(infusRef, (snapshot) => {
-      const data = snapshot.val();
-      if (!data) {
-        grid.innerHTML = `<div class="empty-state">Belum ada data alat. Gunakan Panel Simulator di bawah untuk uji coba.</div>`;
+      if (!('speechSynthesis' in window)) {
+        showToast('Browser ini tidak mendukung Web Speech API.', 'error');
         return;
       }
 
-      grid.innerHTML = "";
-      Object.entries(data).forEach(([deviceId, item]) => {
-        const status = (item.status || "NORMAL").toUpperCase();
-        const bed = item.bed || deviceId;
-        const vol = item.vol_ml ?? "-";
-        const dpm = item.dpm ?? "-";
-        const pesan = item.pesan_suara || "";
-        const time = item.updated_at || "";
+      isVoiceEnabled = !isVoiceEnabled;
 
-        // Cek apakah perlu memicu notifikasi suara
-        if (status === "WARNING" || status === "CRITICAL") {
-          const signature = `${status}|${pesan}`;
-          if (lastAlertSignature[deviceId] !== signature) {
-            lastAlertSignature[deviceId] = signature;
-            const teksSuara = pesan || `Peringatan infus ${bed}, sisa cairan ${vol} mililiter.`;
-            enqueueSpeech(teksSuara);
+      if (isVoiceEnabled) {
+        btn.className =
+          'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition shadow-sm cursor-pointer bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.99]';
+        label.textContent = 'Suara Aktif';
+        iconWrap.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          </svg>`;
+
+        showToast('Peringatan suara Nurse Station diaktifkan.', 'success');
+        VoiceAlertSystem.enqueue('system', 'Sistem peringatan suara infus aktif.', false);
+
+        // Langsung cek kondisi bed yang sedang darurat saat suara baru diaktifkan
+        triggerVoiceCheckForActiveAlerts();
+      } else {
+        VoiceAlertSystem.clear();
+        btn.className =
+          'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition shadow-sm cursor-pointer bg-slate-800 text-white hover:bg-slate-700 active:scale-[0.99]';
+        label.textContent = 'Aktifkan Suara';
+        iconWrap.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+          </svg>`;
+        showToast('Peringatan suara dimatikan.', 'info');
+      }
+    }
+
+    function triggerVoiceCheckForActiveAlerts() {
+      if (!isVoiceEnabled) return;
+      Object.values(nodesState).forEach((node) => {
+        const evalResult = evaluateNodeStatus(node);
+        const isAcknowledged = node.acknowledgedSignature === evalResult.signature;
+        if (evalResult.level !== 'NORMAL' && !isAcknowledged && evalResult.voiceMessage) {
+          VoiceAlertSystem.enqueue(node.id, evalResult.voiceMessage, evalResult.level === 'CRITICAL');
+        }
+      });
+    }
+
+    // Pengingat berkala setiap 28 detik jika masih ada alarm yang belum dikonfirmasi perawat
+    setInterval(() => {
+      if (isVoiceEnabled) {
+        triggerVoiceCheckForActiveAlerts();
+      }
+    }, 28000);
+
+    /**
+     * =========================================================================
+     * 4. SCREEN WAKE LOCK API (LAYAR TETAP MENYALA)
+     * =========================================================================
+     */
+    async function toggleWakeLock() {
+      if (!('wakeLock' in navigator)) {
+        showToast('Perangkat/browser ini tidak mendukung Screen Wake Lock API.', 'warning');
+        return;
+      }
+
+      if (wakeLockSentinel) {
+        try {
+          await wakeLockSentinel.release();
+          wakeLockSentinel = null;
+          updateWakeLockUI(false);
+          showToast('Mode layar tetap menyala dinonaktifkan.', 'info');
+        } catch (err) {
+          console.error(err);
+        }
+      } else {
+        await requestWakeLock();
+      }
+    }
+
+    async function requestWakeLock() {
+      try {
+        wakeLockSentinel = await navigator.wakeLock.request('screen');
+        updateWakeLockUI(true);
+        showToast('Layar dijaga tetap menyala selama monitoring.', 'success');
+
+        wakeLockSentinel.addEventListener('release', () => {
+          wakeLockSentinel = null;
+          updateWakeLockUI(false);
+        });
+      } catch (err) {
+        updateWakeLockUI(false);
+        showToast('Gagal mengaktifkan Wake Lock (pastikan tab aktif / baterai cukup).', 'warning');
+      }
+    }
+
+    function updateWakeLockUI(active) {
+      const btn = document.getElementById('btnToggleWakeLock');
+      const label = document.getElementById('wakeLockBtnText');
+      const icon = document.getElementById('wakeLockIcon');
+
+      if (active) {
+        btn.className =
+          'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition border cursor-pointer bg-amber-50 text-amber-800 border-amber-300 shadow-xs';
+        label.textContent = 'Layar Menyala: Aktif';
+        icon.classList.remove('text-slate-500');
+        icon.classList.add('text-amber-600');
+      } else {
+        btn.className =
+          'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition border cursor-pointer bg-white text-slate-700 border-slate-200 hover:bg-slate-50';
+        label.textContent = 'Layar Tetap Menyala';
+        icon.classList.remove('text-amber-600');
+        icon.classList.add('text-slate-500');
+      }
+    }
+
+    // Otomatis aktifkan kembali Wake Lock jika perawat berpindah tab lalu kembali
+    document.addEventListener('visibilitychange', async () => {
+      if (wakeLockSentinel !== null && document.visibilityState === 'visible') {
+        await requestWakeLock();
+      }
+    });
+
+    /**
+     * =========================================================================
+     * 5. RENDER DASHBOARD & KARTU MONITORING BED
+     * =========================================================================
+     */
+    function formatTimeWIB(timestamp) {
+      const date = new Date(timestamp || Date.now());
+      return date.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+    }
+
+    function renderDashboard() {
+      const grid = document.getElementById('bedsGrid');
+      const nodeList = Object.values(nodesState);
+
+      let countNormal = 0;
+      let countWarning = 0;
+      let countCritical = 0;
+
+      const cardsHtml = nodeList
+        .map((node) => {
+          const evalResult = evaluateNodeStatus(node);
+          const prevStatus = previousStatusMap[node.id];
+
+          // Deteksi transisi status untuk Log Riwayat & Antrean Suara
+          if (prevStatus !== evalResult.signature) {
+            previousStatusMap[node.id] = evalResult.signature;
+
+            if (evalResult.level !== 'NORMAL') {
+              addEventLog(node.nama, evalResult.level, evalResult.alertMessage);
+
+              // Reset konfirmasi senyap jika tingkat darurat berubah
+              if (node.acknowledgedSignature !== evalResult.signature) {
+                node.acknowledgedSignature = null;
+                VoiceAlertSystem.enqueue(node.id, evalResult.voiceMessage, evalResult.level === 'CRITICAL');
+              }
+            } else if (prevStatus && prevStatus !== 'NORMAL') {
+              node.acknowledgedSignature = null;
+              addEventLog(node.nama, 'NORMAL', `Kondisi ${node.nama} kembali normal (${Math.round(node.sisaCairan)} mL, ${node.dpm} DPM).`);
+            }
           }
-        } else {
-          lastAlertSignature[deviceId] = null;
+
+          if (evalResult.level === 'NORMAL') countNormal++;
+          else if (evalResult.level === 'WARNING') countWarning++;
+          else countCritical++; // CRITICAL & OFFLINE dihitung ke indikator darurat
+
+          const isAcknowledged = node.acknowledgedSignature === evalResult.signature;
+
+          // Skema styling kartu berdasarkan status
+          const themeMap = {
+            NORMAL: {
+              cardBg: 'bg-white border-slate-200/90',
+              leftBar: 'bg-emerald-500',
+              badge: 'bg-emerald-600 text-white',
+              progressFill: 'bg-emerald-500',
+              progressBg: 'bg-emerald-100',
+              alertBox: '',
+            },
+            WARNING: {
+              cardBg: 'bg-amber-50/40 border-amber-300',
+              leftBar: 'bg-amber-500',
+              badge: 'bg-amber-500 text-white',
+              progressFill: 'bg-amber-500',
+              progressBg: 'bg-amber-100',
+              alertBox: 'bg-amber-100/80 border-amber-300 text-amber-900',
+            },
+            CRITICAL: {
+              cardBg: 'bg-rose-50/60 border-rose-300 card-critical-pulse',
+              leftBar: 'bg-rose-600',
+              badge: 'bg-rose-600 text-white',
+              progressFill: 'bg-rose-600',
+              progressBg: 'bg-rose-100',
+              alertBox: 'bg-rose-100/90 border-rose-300 text-rose-900',
+            },
+            OFFLINE: {
+              cardBg: 'bg-slate-100/90 border-slate-300',
+              leftBar: 'bg-slate-500',
+              badge: 'bg-slate-700 text-white',
+              progressFill: 'bg-slate-400',
+              progressBg: 'bg-slate-200',
+              alertBox: 'bg-slate-200/80 border-slate-300 text-slate-800',
+            },
+          };
+
+          const style = themeMap[evalResult.level];
+          const sisaRounded = Math.round(node.sisaCairan);
+          const kapasitas = node.kapasitasAwal || 500;
+          const isDripping = evalResult.level !== 'OFFLINE' && node.dpm > 0 && sisaRounded > 0;
+
+          return `
+            <article class="relative rounded-2xl border shadow-sm overflow-hidden transition-all flex flex-col justify-between ${style.cardBg}">
+              <!-- Aksen garis status kiri -->
+              <div class="absolute inset-y-0 left-0 w-1.5 ${style.leftBar}"></div>
+
+              <div class="p-5 pl-6 space-y-4">
+                <!-- Header Kartu Bed -->
+                <div class="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 class="text-lg font-extrabold text-slate-900 leading-tight">${escapeHtml(node.nama)}</h3>
+                    <p class="text-xs text-slate-500 mt-0.5 font-mono">
+                      ID: ${escapeHtml(node.id)} &bull; Update: ${formatTimeWIB(node.updatedAt)}
+                    </p>
+                  </div>
+                  <span class="px-2.5 py-1 rounded-lg text-xs font-extrabold tracking-wide shadow-2xs shrink-0 ${style.badge}">
+                    ${evalResult.badgeText}
+                  </span>
+                </div>
+
+                <!-- Visualisasi Tabung / Progress Bar Sisa Cairan -->
+                <div class="bg-white/90 rounded-xl p-3.5 border border-slate-200/70">
+                  <div class="flex items-center justify-between text-xs mb-1.5">
+                    <span class="font-semibold text-slate-600 flex items-center gap-1.5">
+                      <span>Volume Kantong Infus</span>
+                      ${
+                        isDripping
+                          ? `<span class="inline-flex items-center text-sky-600" title="Tetesan aktif">
+                               <svg class="w-3.5 h-3.5 animate-drip" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                             </span>`
+                          : ''
+                      }
+                    </span>
+                    <span class="font-mono font-bold text-slate-800">
+                      ${sisaRounded} / ${kapasitas} mL (${evalResult.pct}%)
+                    </span>
+                  </div>
+                  <div class="w-full h-3 rounded-full overflow-hidden ${style.progressBg}">
+                    <div
+                      class="h-full rounded-full transition-all duration-500 ${style.progressFill}"
+                      style="width: ${evalResult.pct}%"
+                    ></div>
+                  </div>
+                </div>
+
+                <!-- Panel Metrik Utama (Sisa Cairan & Laju Tetesan) -->
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="bg-white rounded-xl p-3.5 border border-slate-200/80">
+                    <p class="text-xs font-medium text-slate-500">Sisa Cairan</p>
+                    <div class="mt-1 flex items-baseline gap-1">
+                      <span class="text-2xl sm:text-3xl font-extrabold font-mono text-slate-900">${sisaRounded}</span>
+                      <span class="text-xs font-bold text-slate-500">mL</span>
+                    </div>
+                  </div>
+
+                  <div class="bg-white rounded-xl p-3.5 border border-slate-200/80">
+                    <div class="flex items-center justify-between">
+                      <p class="text-xs font-medium text-slate-500">Laju Tetesan</p>
+                      <span class="text-[11px] font-mono text-slate-400">Target ${node.targetDpm || 20}</span>
+                    </div>
+                    <div class="mt-1 flex items-baseline gap-1">
+                      <span class="text-2xl sm:text-3xl font-extrabold font-mono text-slate-900">${node.dpm}</span>
+                      <span class="text-xs font-bold text-slate-500">DPM</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Estimasi Waktu Habis (ETA) -->
+                <div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white/80 border border-slate-200/70 text-xs">
+                  <span class="text-slate-500 font-medium flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-sky-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    <span>Estimasi Habis (ETA)</span>
+                  </span>
+                  <span class="font-mono font-bold text-slate-800">${evalResult.etaText}</span>
+                </div>
+
+                <!-- Pesan Peringatan Spesifik (Jika Ada) -->
+                ${
+                  evalResult.alertMessage
+                    ? `<div class="rounded-xl border p-3 text-xs font-semibold flex items-start gap-2 ${style.alertBox}">
+                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                         </svg>
+                         <span>${escapeHtml(evalResult.alertMessage)}</span>
+                       </div>`
+                    : ''
+                }
+              </div>
+
+              <!-- Footer Aksi Perawat per Bed -->
+              <div class="px-5 pl-6 py-3 bg-white/70 border-t border-slate-200/70 flex items-center justify-between gap-2">
+                ${
+                  evalResult.level !== 'NORMAL'
+                    ? `<button
+                         onclick="acknowledgeBedAlarm('${node.id}')"
+                         class="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                           isAcknowledged
+                             ? 'bg-slate-200 text-slate-600'
+                             : 'bg-slate-900 text-white hover:bg-slate-800 shadow-xs'
+                         }"
+                       >
+                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                           <polyline points="20 6 9 17 4 12"/>
+                         </svg>
+                         <span>${isAcknowledged ? 'Sedang Ditangani (Senyap)' : 'Konfirmasi / Senyapkan'}</span>
+                       </button>`
+                    : `<span class="text-xs text-emerald-700 font-medium flex items-center gap-1">
+                         <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                         Aliran infus stabil
+                       </span>`
+                }
+
+                <button
+                  onclick="refillInfusionBag('${node.id}')"
+                  title="Ganti kantong infus baru (500 mL)"
+                  class="px-3 py-2 rounded-xl text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 transition cursor-pointer shrink-0"
+                >
+                  Ganti 500 mL
+                </button>
+              </div>
+            </article>
+          `;
+        })
+        .join('');
+
+      grid.innerHTML = cardsHtml;
+
+      // Update KPI Summary Cards
+      document.getElementById('kpiTotal').textContent = nodeList.length;
+      document.getElementById('kpiNormal').textContent = countNormal;
+      document.getElementById('kpiWarning').textContent = countWarning;
+      document.getElementById('kpiCritical').textContent = countCritical;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    /**
+     * =========================================================================
+     * 6. AKSI PERAWAT & SIMULATOR PENGIRIMAN DATA
+     * =========================================================================
+     */
+    function acknowledgeBedAlarm(nodeId) {
+      const node = nodesState[nodeId];
+      if (!node) return;
+      const evalResult = evaluateNodeStatus(node);
+      node.acknowledgedSignature = evalResult.signature;
+
+      // Hapus antrean suara khusus untuk bed ini
+      VoiceAlertSystem.queue = VoiceAlertSystem.queue.filter((item) => item.nodeId !== nodeId);
+      VoiceAlertSystem.updateQueueBadge();
+
+      addEventLog(node.nama, 'INFO', `Perawat mengonfirmasi & menyenyapkan alarm untuk ${node.nama}.`);
+      showToast(`Alarm ${node.nama} disenyapkan sementara perawat menangani.`, 'info');
+      persistNodesLocally();
+      renderDashboard();
+    }
+
+    function refillInfusionBag(nodeId) {
+      const node = nodesState[nodeId];
+      if (!node) return;
+      const payload = {
+        ...node,
+        sisaCairan: 500,
+        kapasitasAwal: 500,
+        dpm: node.targetDpm || 20,
+        updatedAt: Date.now(),
+        forcedOffline: false,
+        acknowledgedSignature: null,
+      };
+      pushNodeUpdate(nodeId, payload);
+      addEventLog(node.nama, 'NORMAL', `Kantong infus ${node.nama} diganti baru (500 mL, ${payload.dpm} DPM).`);
+      showToast(`Kantong infus ${node.nama} diisi ulang ke 500 mL.`, 'success');
+    }
+
+    function simulateScenario(nodeId, changes) {
+      const current = nodesState[nodeId];
+      if (!current) return;
+
+      const updated = {
+        ...current,
+        ...changes,
+        updatedAt: Date.now(),
+        forcedOffline: false,
+      };
+      delete updated.forceOnline;
+
+      pushNodeUpdate(nodeId, updated);
+    }
+
+    function simulateOfflineNode(nodeId) {
+      const current = nodesState[nodeId];
+      if (!current) return;
+
+      nodesState[nodeId] = {
+        ...current,
+        forcedOffline: true,
+        updatedAt: Date.now() - OFFLINE_TIMEOUT_MS - 5000,
+      };
+      persistNodesLocally();
+      renderDashboard();
+    }
+
+    function resetAllNodesToNormal() {
+      const now = Date.now();
+      Object.keys(nodesState).forEach((id, idx) => {
+        const volumes = [480, 500, 450];
+        nodesState[id] = {
+          ...nodesState[id],
+          sisaCairan: volumes[idx % volumes.length],
+          kapasitasAwal: 500,
+          dpm: 20,
+          updatedAt: now,
+          forcedOffline: false,
+          acknowledgedSignature: null,
+        };
+        if (firebaseConnected && firebaseDbRef) {
+          syncSingleNodeToFirebase(id, nodesState[id]);
+        }
+      });
+      persistNodesLocally();
+      renderDashboard();
+      showToast('Semua bed berhasil di-reset ke kondisi Normal.', 'success');
+    }
+
+    /**
+     * Mengirim pembaruan node ke Firebase RTDB (jika terhubung) atau langsung ke state lokal
+     */
+    function pushNodeUpdate(nodeId, payload) {
+      nodesState[nodeId] = payload;
+      persistNodesLocally();
+      renderDashboard();
+
+      if (firebaseConnected && firebaseDbRef) {
+        syncSingleNodeToFirebase(nodeId, payload);
+      }
+    }
+
+    function syncSingleNodeToFirebase(nodeId, nodeData) {
+      if (!firebaseConnected || !firebaseDbRef) return;
+      const cleanPayload = {
+        nama: nodeData.nama,
+        sisaCairan: Math.round(nodeData.sisaCairan * 10) / 10,
+        kapasitasAwal: nodeData.kapasitasAwal || 500,
+        dpm: nodeData.dpm,
+        targetDpm: nodeData.targetDpm || 20,
+        faktorTetes: nodeData.faktorTetes || 20,
+        updatedAt: Date.now(),
+      };
+      firebaseDbRef.child(nodeId).set(cleanPayload).catch((err) => {
+        console.error('Gagal menulis ke Firebase:', err);
+      });
+    }
+
+    /**
+     * Simulasi Tetesan Berjalan Otomatis (Mengurangi volume cairan berdasar DPM)
+     */
+    function toggleAutoDrip() {
+      const btn = document.getElementById('btnAutoDrip');
+      const label = document.getElementById('autoDripLabel');
+      const icon = document.getElementById('autoDripIcon');
+
+      if (autoDripInterval) {
+        clearInterval(autoDripInterval);
+        autoDripInterval = null;
+        btn.className =
+          'inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm';
+        label.textContent = 'Jalankan Tetesan Otomatis';
+        icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+        showToast('Simulasi tetesan otomatis dihentikan.', 'info');
+      } else {
+        btn.className =
+          'inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition cursor-pointer bg-rose-600 text-white hover:bg-rose-700 shadow-sm';
+        label.textContent = 'Hentikan Tetesan Otomatis';
+        icon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+        showToast(`Simulasi tetesan berjalan (${simSpeedMultiplier}x kecepatan).`, 'success');
+
+        autoDripInterval = setInterval(() => {
+          const tickSeconds = 2; // interval tiap 2 detik
+          Object.keys(nodesState).forEach((id) => {
+            const node = nodesState[id];
+            if (node.forcedOffline) return;
+
+            const faktorTetes = node.faktorTetes || 20; // 20 gtt = 1 mL
+            const mlPerSecond = (node.dpm / faktorTetes) / 60;
+            const consumedMl = mlPerSecond * tickSeconds * simSpeedMultiplier;
+
+            let nextSisa = Math.max(0, node.sisaCairan - consumedMl);
+            let nextDpm = node.dpm;
+
+            // Jika cairan habis total, tetesan otomatis berhenti (0 DPM)
+            if (nextSisa <= 0) {
+              nextSisa = 0;
+              nextDpm = 0;
+            }
+
+            nodesState[id] = {
+              ...node,
+              sisaCairan: nextSisa,
+              dpm: nextDpm,
+              updatedAt: Date.now(),
+            };
+
+            if (firebaseConnected && firebaseDbRef) {
+              syncSingleNodeToFirebase(id, nodesState[id]);
+            }
+          });
+
+          persistNodesLocally();
+          renderDashboard();
+        }, 2000);
+      }
+    }
+
+    function changeSimSpeed(val) {
+      simSpeedMultiplier = Number(val) || 30;
+      if (autoDripInterval) {
+        showToast(`Kecepatan simulasi diubah ke ${simSpeedMultiplier}x.`, 'info');
+      }
+    }
+
+    function toggleSimulatorPanel() {
+      const panel = document.getElementById('simulatorPanel');
+      const btnText = document.getElementById('simulatorBtnText');
+      isSimulatorOpen = !isSimulatorOpen;
+
+      if (isSimulatorOpen) {
+        panel.classList.remove('hidden');
+        btnText.textContent = 'Sembunyikan Simulator';
+      } else {
+        panel.classList.add('hidden');
+        btnText.textContent = 'Buka Panel Simulator Uji Coba';
+      }
+    }
+
+    /**
+     * =========================================================================
+     * 7. INTEGRASI FIREBASE REALTIME DATABASE
+     * =========================================================================
+     */
+    function initFirebaseFromStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_FB);
+        if (!raw) return;
+        const cfg = JSON.parse(raw);
+        if (cfg && cfg.databaseURL) {
+          document.getElementById('inputDatabaseUrl').value = cfg.databaseURL;
+          document.getElementById('inputDbPath').value = cfg.dbPath || 'infus_nodes';
+          connectToFirebase(cfg.databaseURL, cfg.dbPath || 'infus_nodes', true);
+        }
+      } catch (e) {
+        console.warn('Gagal memuat konfigurasi Firebase:', e);
+      }
+    }
+
+    function saveFirebaseSettings() {
+      const url = document.getElementById('inputDatabaseUrl').value.trim();
+      const dbPath = document.getElementById('inputDbPath').value.trim() || 'infus_nodes';
+
+      if (!url || !url.startsWith('https://')) {
+        showToast('Masukkan Database URL Firebase yang valid (diawali https://).', 'error');
+        return;
+      }
+
+      localStorage.setItem(STORAGE_KEY_FB, JSON.stringify({ databaseURL: url, dbPath }));
+      connectToFirebase(url, dbPath, false);
+      closeModal('modalFirebase');
+    }
+
+    function connectToFirebase(databaseURL, dbPath, silent = false) {
+      try {
+        // Hapus instance app lama jika ada
+        if (firebase.apps && firebase.apps.length > 0) {
+          firebase.apps.forEach((app) => app.delete());
         }
 
-        // Render Kartu Perangkat
-        const card = document.createElement("div");
-        card.className = `card ${status}`;
-        card.innerHTML = `
-          <div class="card-header">
-            <div>
-              <div class="bed-title">${bed}</div>
-              <div class="device-id">ID: ${deviceId} • Update: ${time}</div>
-            </div>
-            <span class="status-pill">${status}</span>
+        const app = firebase.initializeApp({ databaseURL });
+        const db = firebase.database(app);
+
+        // Pantau status koneksi .info/connected milik Firebase
+        db.ref('.info/connected').on('value', (snap) => {
+          const isConnected = snap.val() === true;
+          firebaseConnected = isConnected;
+          updateConnectionBadge(isConnected);
+        });
+
+        firebaseDbRef = db.ref(dbPath);
+        firebaseDbRef.on('value', (snapshot) => {
+          const val = snapshot.val();
+          if (val && typeof val === 'object') {
+            Object.keys(val).forEach((key) => {
+              const incoming = val[key];
+              const existing = nodesState[key] || {
+                id: key,
+                nama: incoming.nama || key,
+                kapasitasAwal: 500,
+                targetDpm: 20,
+                faktorTetes: 20,
+              };
+              nodesState[key] = {
+                ...existing,
+                ...incoming,
+                id: key,
+                updatedAt: incoming.updatedAt || Date.now(),
+                forcedOffline: false,
+              };
+            });
+            persistNodesLocally();
+            renderDashboard();
+          } else {
+            // Jika node di Firebase masih kosong, inisialisasi dengan data awal
+            Object.keys(nodesState).forEach((id) => {
+              syncSingleNodeToFirebase(id, nodesState[id]);
+            });
+          }
+        });
+
+        if (!silent) {
+          showToast('Menghubungkan ke Firebase Realtime Database...', 'success');
+        }
+      } catch (err) {
+        console.error('Firebase init error:', err);
+        firebaseConnected = false;
+        updateConnectionBadge(false);
+        showToast('Gagal menghubungkan ke Firebase. Periksa URL database.', 'error');
+      }
+    }
+
+    function disconnectFirebase() {
+      localStorage.removeItem(STORAGE_KEY_FB);
+      if (firebaseDbRef) {
+        firebaseDbRef.off();
+        firebaseDbRef = null;
+      }
+      firebaseConnected = false;
+      updateConnectionBadge(false);
+      closeModal('modalFirebase');
+      showToast('Beralih ke Mode Simulasi Lokal.', 'info');
+    }
+
+    function updateConnectionBadge(isOnline) {
+      const btn = document.getElementById('btnConnectionStatus');
+      const dot = document.getElementById('connectionDot');
+      const label = document.getElementById('connectionLabel');
+
+      if (isOnline) {
+        btn.className =
+          'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500';
+        label.textContent = 'Terhubung ke Firebase RTDB';
+      } else {
+        btn.className =
+          'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse';
+        label.textContent = 'Mode Simulasi Lokal';
+      }
+    }
+
+    /**
+     * =========================================================================
+     * 8. LOG RIWAYAT KEJADIAN, MODAL & TOAST HELPERS
+     * =========================================================================
+     */
+    function addEventLog(source, level, message) {
+      const entry = {
+        time: formatTimeWIB(Date.now()),
+        source,
+        level,
+        message,
+      };
+      eventLogs.unshift(entry);
+      if (eventLogs.length > 50) {
+        eventLogs.pop();
+      }
+      renderEventLogs();
+    }
+
+    function renderEventLogs() {
+      const container = document.getElementById('eventLogList');
+      const countBadge = document.getElementById('logCountBadge');
+      countBadge.textContent = eventLogs.length;
+
+      if (eventLogs.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-6 text-xs text-slate-400">
+            Belum ada catatan perubahan status atau peringatan pada sesi ini.
           </div>
-          <div class="metrics">
-            <div class="metric-box">
-              <div class="metric-label">Sisa Cairan</div>
-              <div class="metric-val">${vol} <small style="font-size:0.85rem">mL</small></div>
-            </div>
-            <div class="metric-box">
-              <div class="metric-label">Laju Tetesan</div>
-              <div class="metric-val">${dpm} <small style="font-size:0.85rem">DPM</small></div>
-            </div>
-          </div>
-          <div class="alert-msg">${pesan ? "⚠️ " + pesan : ""}</div>
         `;
-        grid.appendChild(card);
-      });
+        return;
+      }
+
+      const pillMap = {
+        CRITICAL: 'bg-rose-100 text-rose-800 border-rose-200',
+        WARNING: 'bg-amber-100 text-amber-800 border-amber-200',
+        OFFLINE: 'bg-slate-200 text-slate-800 border-slate-300',
+        NORMAL: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+        INFO: 'bg-sky-100 text-sky-800 border-sky-200',
+      };
+
+      container.innerHTML = eventLogs
+        .map(
+          (item) => `
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200/70 text-xs">
+            <div class="flex items-start sm:items-center gap-2.5">
+              <span class="font-mono text-slate-400 shrink-0">${item.time}</span>
+              <span class="px-2 py-0.5 rounded-md font-bold text-[10px] border shrink-0 ${pillMap[item.level] || pillMap.INFO}">
+                ${item.level}
+              </span>
+              <span class="text-slate-700 font-medium">${escapeHtml(item.message)}</span>
+            </div>
+          </div>
+        `
+        )
+        .join('');
+    }
+
+    function clearEventLogs() {
+      eventLogs = [];
+      renderEventLogs();
+      showToast('Riwayat log kejadian dibersihkan.', 'info');
+    }
+
+    function openModal(modalId) {
+      const el = document.getElementById(modalId);
+      if (!el) return;
+      el.classList.remove('hidden');
+      el.classList.add('flex');
+    }
+
+    function closeModal(modalId) {
+      const el = document.getElementById(modalId);
+      if (!el) return;
+      el.classList.add('hidden');
+      el.classList.remove('flex');
+    }
+
+    function copyEspJsonSample() {
+      const text = document.getElementById('espJsonSample').textContent;
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast('Contoh struktur JSON ESP32 berhasil disalin!', 'success');
+      } catch (e) {
+        showToast('Gagal menyalin teks.', 'error');
+      }
+      document.body.removeChild(textarea);
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const colorMap = {
+        success: 'bg-emerald-900 text-white border-emerald-700',
+        warning: 'bg-amber-900 text-white border-amber-700',
+        error: 'bg-rose-900 text-white border-rose-700',
+        info: 'bg-slate-900 text-white border-slate-700',
+      };
+
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto px-4 py-3 rounded-xl border shadow-lg text-xs font-medium flex items-center justify-between gap-3 transition-all duration-300 ${colorMap[type] || colorMap.info}`;
+      toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
+
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(6px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    /**
+     * =========================================================================
+     * 9. INISIALISASI SAAT HALAMAN DIMUAT
+     * =========================================================================
+     */
+    window.addEventListener('DOMContentLoaded', () => {
+      // Jam digital real-time
+      const updateClock = () => {
+        document.getElementById('liveClock').textContent = `${formatTimeWIB(Date.now())} WIB`;
+      };
+      updateClock();
+      setInterval(updateClock, 1000);
+
+      // Periodic check setiap 5 detik untuk mendeteksi perangkat yang tiba-tiba offline
+      setInterval(() => {
+        renderDashboard();
+      }, 5000);
+
+      renderDashboard();
+      renderEventLogs();
+      initFirebaseFromStorage();
     });
   </script>
 </body>
